@@ -191,7 +191,7 @@
                          : "あらすじがありません。";
       // 使用簡易 NLP 摘要生成函式取得三行要約
       const summary = simpleSummarize(synopsis, 3);
-      document.getElementById("movieInfo").innerHTML = `<h3>三行要約（この映画は何でしょう？）</h3><div>${summary}</div><br><button id="revealBtn">詳細情報を表示する</button>`;
+      document.getElementById("movieInfo").innerHTML = `<h3>この映画は何でしょう？</h3><div>${summary}</div><br><button id="revealBtn">詳細情報を表示する</button>`;
       document.getElementById("revealBtn").addEventListener("click", function() {
         displayMovie(currentMovie);
       });
