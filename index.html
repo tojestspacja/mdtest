@@ -1,164 +1,100 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>電影推薦應用</title>
+  <title>映画推薦と記事要約アプリ</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    #controls { margin-bottom: 20px; }
-    #movieInfo { margin-top: 20px; }
-    button, select, input { padding: 10px; font-size: 16px; margin-right: 10px; }
-    .section { margin-bottom: 10px; }
+    .section { margin-bottom: 30px; }
+    textarea { width: 100%; height: 200px; }
+    button { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
   </style>
 </head>
 <body>
-  <h1>電影推薦應用</h1>
-  
-  <div id="controls">
-    <label for="genreSelect">選擇類型:</label>
-    <select id="genreSelect">
-      <option value="">全部</option>
-    </select>
-    <label for="searchInput">搜尋電影標題:</label>
-    <input type="text" id="searchInput" placeholder="輸入關鍵字">
-    <button id="recommendBtn">推薦電影</button>
-    <button id="revealBtn" style="display:none;">揭曉電影資訊</button>
+  <h1>映画推薦と記事要約アプリ</h1>
+
+  <!-- 部分1: 映画推薦 -->
+  <div class="section" id="movieSection">
+    <h2>映画推薦（簡易要約で三行要約を生成）</h2>
+    <button id="recommendMovieBtn">映画を推薦する</button>
+    <div id="movieInfo">映画データを読み込み中...</div>
   </div>
-  
-  <div id="movieInfo">正在載入電影資料...</div>
+
+  <!-- 部分2: 記事要約生成 -->
+  <div class="section" id="articleSection">
+    <h2>記事要約生成</h2>
+    <textarea id="articleInput">
+桜
+
+ログイン
+会員登録
+見出し画像
+最近公開された日本語LLMを要約生成タスクで検証してみる
+
+106
+朝日新聞社 メディア研究開発センター
+朝日新聞社 メディア研究開発センター
+2023年6月30日 11:00
+こんにちは。メディア研究開発センター（M研）の田口です。
+
+最近、大規模言語モデル（以下、LLM）に関するニュースが毎日のように出ています。直近約1ヶ月の間にもOpenAIのAPIのアップデートが発表されたり、日本語のLLMが公開されたりしました。
+
+（以下省略）
+    </textarea>
+    <button id="summarizeArticleBtn">記事要約を生成する</button>
+    <div id="articleSummary">要約はここに表示されます...</div>
+  </div>
 
   <script>
-    // 請將此處替換成你的 Hugging Face API 金鑰
-    const HF_API_KEY = "YOUR_API_KEY";  
-    let movies = [];          
-    let filteredMovies = [];  
-    let currentMovie = null;  
-
-    // 將所有電影的類型加入下拉選單
-    function populateGenreOptions() {
-      const genreSet = new Set();
-      movies.forEach(movie => {
-        const genres = movie.info["ジャンル"];
-        if (Array.isArray(genres)) {
-          genres.forEach(g => genreSet.add(g));
+    // -----------------------------------------
+    // 簡易要約関数（陽春な実装：日本語テキスト処理）
+    // -----------------------------------------
+    function simpleSummarize(text, numSentences = 3) {
+      // 文の区切りとして「。」「？」「！」を利用し、区切り文字も保持する
+      const sentences = text.split(/(?<=[。！？])/);
+      const validSentences = sentences.filter(s => s.trim().length > 0);
+      
+      // 日本語の単語を、ひらがな、カタカナ、漢字の連なりで抽出（簡易的）
+      let allWords = [];
+      validSentences.forEach(sentence => {
+        const words = sentence.match(/[\u3040-\u30FF\u4E00-\u9FFF]+/g);
+        if (words) {
+          allWords = allWords.concat(words);
         }
       });
-      const genreSelect = document.getElementById("genreSelect");
-      genreSet.forEach(genre => {
-        const option = document.createElement("option");
-        option.value = genre;
-        option.textContent = genre;
-        genreSelect.appendChild(option);
+      
+      // 単語の頻度を計算
+      let freq = {};
+      allWords.forEach(word => {
+        freq[word] = (freq[word] || 0) + 1;
       });
-    }
-
-    // 根據下拉選單與搜尋框內容過濾電影
-    function filterMovies() {
-      const selectedGenre = document.getElementById("genreSelect").value;
-      const searchKeyword = document.getElementById("searchInput").value.toLowerCase();
-      filteredMovies = movies.filter(movie => {
-        const titleMatch = movie.title.toLowerCase().includes(searchKeyword);
-        let genreMatch = true;
-        if (selectedGenre) {
-          const genres = movie.info["ジャンル"] || [];
-          genreMatch = genres.includes(selectedGenre);
-        }
-        return titleMatch && genreMatch;
+      
+      // 各文のスコアを、文中の各単語の頻度の合計で算出
+      let sentenceScores = validSentences.map(sentence => {
+        let words = sentence.match(/[\u3040-\u30FF\u4E00-\u9FFF]+/g) || [];
+        let score = words.reduce((sum, word) => sum + (freq[word] || 0), 0);
+        return { sentence: sentence, score: score };
       });
+      
+      // スコアが高い順にソート
+      sentenceScores.sort((a, b) => b.score - a.score);
+      
+      // 上位 numSentences の文を選択し、元のテキスト中の順序で並べ替え
+      let topSentences = sentenceScores.slice(0, numSentences);
+      topSentences.sort((a, b) => text.indexOf(a.sentence) - text.indexOf(b.sentence));
+      
+      // 結果を <br> 区切りで返す
+      return topSentences.map(item => item.sentence.trim()).join("<br>");
     }
 
-    // 利用 Hugging Face summarization API 生成三行摘要
-    function generateThreeLineSummary(movie, callback) {
-      const info = movie.info;
-      if(info["あらすじ"] && Array.isArray(info["あらすじ"])) {
-         // 將あらすじ陣列合併為一個完整文字
-         const fullSynopsis = info["あらすじ"].join(" ");
-         fetch("https://api-inference.huggingface.co/models/facebook/bart-large-cnn", {
-            method: "POST",
-            headers: {
-              "Authorization": "Bearer " + HF_API_KEY,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              inputs: fullSynopsis,
-              parameters: { max_length: 150, min_length: 50, do_sample: false }
-            })
-         })
-         .then(response => response.json())
-         .then(data => {
-           if(data && data[0] && data[0].summary_text) {
-              const summary = data[0].summary_text;
-              // 利用日文句點（。）作為分隔符分行
-              const lines = summary.split(/(?<=。)/);
-              // 取前三行（若不足三行則全部顯示）
-              const threeLineSummary = lines.slice(0,3).join("<br>");
-              callback(threeLineSummary);
-           } else {
-              callback("無法生成摘要。");
-           }
-         })
-         .catch(error => {
-            console.error("Summarization error:", error);
-            callback("摘要生成失敗。");
-         });
-      } else {
-         callback("無法生成摘要。");
-      }
-    }
+    // -----------------------------------------
+    // 部分1: 映画推薦機能
+    // -----------------------------------------
+    let movies = [];
+    let filteredMovies = [];
+    let currentMovie = null;
 
-    // 顯示由 NLP 模組生成的三行摘要
-    function displayThreeLineSummary(movie) {
-      document.getElementById("movieInfo").innerHTML = `<h2>正在生成三行摘要...</h2>`;
-      generateThreeLineSummary(movie, function(summary) {
-        let summaryHTML = `<h2>三行摘要 (猜猜這是什麼電影？)</h2>`;
-        summaryHTML += `<div class="section">${summary}</div>`;
-        document.getElementById("movieInfo").innerHTML = summaryHTML;
-      });
-    }
-
-    // 顯示電影完整資訊
-    function displayMovie(movie) {
-      const info = movie.info;
-      let html = `<h2>${movie.title}</h2>`;
-      html += `<div class="section"><strong>製作年度:</strong> ${info["製作年度"] || "N/A"}</div>`;
-      html += `<div class="section"><strong>監督名:</strong> ${info["監督名"] || "N/A"}</div>`;
-      html += `<div class="section"><strong>監督説明:</strong> ${info["監督説明"] || "N/A"}</div>`;
-      
-      if(info["キャスト名"] && info["キャスト説明"]) {
-        html += `<div class="section"><strong>キャスト:</strong><ul>`;
-        for(let i = 0; i < info["キャスト名"].length; i++){
-          const castName = info["キャスト名"][i];
-          const castDesc = info["キャスト説明"][i] || "";
-          html += `<li>${castName}: ${castDesc}</li>`;
-        }
-        html += `</ul></div>`;
-      }
-      
-      if(info["ジャンル"]) {
-        html += `<div class="section"><strong>ジャンル:</strong> ${info["ジャンル"].join(", ")}</div>`;
-      }
-      
-      if(info["レビュー"]) {
-        html += `<div class="section"><strong>レビュー:</strong><ul>`;
-        info["レビュー"].forEach(review => {
-          html += `<li>${review}</li>`;
-        });
-        html += `</ul></div>`;
-      }
-      
-      if(info["あらすじ"]) {
-        html += `<div class="section"><strong>あらすじ:</strong>`;
-        info["あらすじ"].forEach(line => {
-          html += `<p>${line}</p>`;
-        });
-        html += `</div>`;
-      }
-      
-      document.getElementById("movieInfo").innerHTML = html;
-      document.getElementById("revealBtn").style.display = "none";
-    }
-
-    // 載入電影 JSON 資料（使用 GitHub raw URL）
+    // GitHubから映画データ（JMRDデータセット）を読み込み
     fetch('https://raw.githubusercontent.com/ku-nlp/JMRD/main/data/train.json')
       .then(response => response.json())
       .then(data => {
@@ -173,36 +109,79 @@
           title: title,
           info: movieMap[title]
         }));
-        document.getElementById("movieInfo").innerText = `電影資料載入完成，共有 ${movies.length} 部電影。`;
-        populateGenreOptions();
-        filterMovies();
+        document.getElementById("movieInfo").innerText = `映画データの読み込み完了。全 ${movies.length} 件の映画があります。`;
+        // 今回は全映画を対象
+        filteredMovies = movies;
       })
       .catch(error => {
-        console.error('載入 JSON 發生錯誤：', error);
-        document.getElementById("movieInfo").innerText = "載入電影資料失敗。";
+        console.error('映画データの読み込みに失敗しました：', error);
+        document.getElementById("movieInfo").innerText = "映画データの読み込みに失敗しました。";
       });
 
-    document.getElementById("genreSelect").addEventListener("change", filterMovies);
-    document.getElementById("searchInput").addEventListener("input", filterMovies);
-
-    // 推薦電影按鈕：從過濾後隨機挑選一部，生成並顯示三行摘要
-    document.getElementById("recommendBtn").addEventListener("click", function() {
-      filterMovies();
+    // 映画推薦ボタンのクリックイベント
+    document.getElementById("recommendMovieBtn").addEventListener("click", function() {
       if (filteredMovies.length === 0) {
-        document.getElementById("movieInfo").innerText = "沒有符合條件的電影。";
+        document.getElementById("movieInfo").innerText = "利用可能な映画データがありません。";
         return;
       }
+      // ランダムに映画を選択
       const randomMovie = filteredMovies[Math.floor(Math.random() * filteredMovies.length)];
       currentMovie = randomMovie;
-      displayThreeLineSummary(randomMovie);
-      document.getElementById("revealBtn").style.display = "inline-block";
+      // 「あらすじ」部分を連結して一つのテキストに
+      const synopsis = (randomMovie.info["あらすじ"] && Array.isArray(randomMovie.info["あらすじ"])) 
+                         ? randomMovie.info["あらすじ"].join(" ") 
+                         : "";
+      document.getElementById("movieInfo").innerHTML = `<h3>要約生成中...</h3>`;
+      // 簡易要約関数で3行要約を生成
+      const summary = simpleSummarize(synopsis, 3);
+      document.getElementById("movieInfo").innerHTML = `<h3>三行要約（この映画は何でしょう？）</h3><div>${summary}</div><br><button id="revealMovieBtn">映画情報を表示する</button>`;
+      document.getElementById("revealMovieBtn").addEventListener("click", function() {
+        displayFullMovie(currentMovie);
+      });
     });
 
-    // 揭曉電影資訊按鈕
-    document.getElementById("revealBtn").addEventListener("click", function() {
-      if (currentMovie) {
-        displayMovie(currentMovie);
+    // 映画の完全な情報を表示する関数
+    function displayFullMovie(movie) {
+      const info = movie.info;
+      let html = `<h2>${movie.title}</h2>`;
+      html += `<p><strong>製作年度:</strong> ${info["製作年度"] || "N/A"}</p>`;
+      html += `<p><strong>監督名:</strong> ${info["監督名"] || "N/A"}</p>`;
+      html += `<p><strong>監督説明:</strong> ${info["監督説明"] || "N/A"}</p>`;
+      if(info["キャスト名"] && info["キャスト説明"]) {
+        html += `<p><strong>キャスト:</strong><ul>`;
+        for(let i = 0; i < info["キャスト名"].length; i++){
+          html += `<li>${info["キャスト名"][i]}: ${info["キャスト説明"][i] || ""}</li>`;
+        }
+        html += `</ul></p>`;
       }
+      if(info["ジャンル"]) {
+        html += `<p><strong>ジャンル:</strong> ${info["ジャンル"].join(", ")}</p>`;
+      }
+      if(info["レビュー"]) {
+        html += `<p><strong>レビュー:</strong><ul>`;
+        info["レビュー"].forEach(review => {
+          html += `<li>${review}</li>`;
+        });
+        html += `</ul></p>`;
+      }
+      if(info["あらすじ"]) {
+        html += `<p><strong>あらすじ:</strong>`;
+        info["あらすじ"].forEach(line => {
+          html += `<br>${line}`;
+        });
+        html += `</p>`;
+      }
+      document.getElementById("movieInfo").innerHTML = html;
+    }
+
+    // -----------------------------------------
+    // 部分2: 記事要約生成機能
+    // -----------------------------------------
+    document.getElementById("summarizeArticleBtn").addEventListener("click", function() {
+      const articleText = document.getElementById("articleInput").value;
+      document.getElementById("articleSummary").innerHTML = `<h3>要約生成中...</h3>`;
+      const summary = simpleSummarize(articleText, 3);
+      document.getElementById("articleSummary").innerHTML = `<h3>記事要約:</h3><div>${summary}</div>`;
     });
   </script>
 </body>
