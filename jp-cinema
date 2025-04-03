@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>電影推薦應用</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #controls { margin-bottom: 20px; }
+    #movieInfo { margin-top: 20px; }
+    button, select, input { padding: 10px; font-size: 16px; margin-right: 10px; }
+    .section { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <h1>電影推薦應用</h1>
+  <div id="controls">
+    <label for="genreSelect">選擇類型:</label>
+    <select id="genreSelect">
+      <option value="">全部</option>
+    </select>
+    <label for="searchInput">搜尋電影標題:</label>
+    <input type="text" id="searchInput" placeholder="輸入關鍵字">
+    <button id="recommendBtn">推薦電影</button>
+  </div>
+  <div id="movieInfo">正在載入電影資料...</div>
+
+  <script>
+    let movies = [];       // 存放所有不重複電影資料 { title, info }
+    let filteredMovies = [];  // 依條件過濾後的電影
+
+    // 將電影資料中出現的所有類型填入下拉選單
+    function populateGenreOptions() {
+      const genreSet = new Set();
+      movies.forEach(movie => {
+        const genres = movie.info["ジャンル"];
+        if (Array.isArray(genres)) {
+          genres.forEach(g => genreSet.add(g));
+        }
+      });
+      const genreSelect = document.getElementById("genreSelect");
+      genreSet.forEach(genre => {
+        const option = document.createElement("option");
+        option.value = genre;
+        option.textContent = genre;
+        genreSelect.appendChild(option);
+      });
+    }
+
+    // 根據下拉選單和搜尋框來過濾電影
+    function filterMovies() {
+      const selectedGenre = document.getElementById("genreSelect").value;
+      const searchKeyword = document.getElementById("searchInput").value.toLowerCase();
+      filteredMovies = movies.filter(movie => {
+        const titleMatch = movie.title.toLowerCase().includes(searchKeyword);
+        let genreMatch = true;
+        if (selectedGenre) {
+          const genres = movie.info["ジャンル"] || [];
+          genreMatch = genres.includes(selectedGenre);
+        }
+        return titleMatch && genreMatch;
+      });
+    }
+
+    // 依據電影資料格式化顯示詳細資訊
+    function displayMovie(movie) {
+      const info = movie.info;
+      let html = `<h2>${movie.title}</h2>`;
+      html += `<div class="section"><strong>製作年度:</strong> ${info["製作年度"] || "N/A"}</div>`;
+      html += `<div class="section"><strong>監督名:</strong> ${info["監督名"] || "N/A"}</div>`;
+      html += `<div class="section"><strong>監督説明:</strong> ${info["監督説明"] || "N/A"}</div>`;
+      
+      // 顯示演員與其說明
+      if(info["キャスト名"] && info["キャスト説明"]) {
+        html += `<div class="section"><strong>キャスト:</strong><ul>`;
+        for(let i = 0; i < info["キャスト名"].length; i++){
+          const castName = info["キャスト名"][i];
+          const castDesc = info["キャスト説明"][i] || "";
+          html += `<li>${castName}: ${castDesc}</li>`;
+        }
+        html += `</ul></div>`;
+      }
+      
+      // 顯示電影類型
+      if(info["ジャンル"]) {
+        html += `<div class="section"><strong>ジャンル:</strong> ${info["ジャンル"].join(", ")}</div>`;
+      }
+      
+      // 顯示評論（以列表方式）
+      if(info["レビュー"]) {
+        html += `<div class="section"><strong>レビュー:</strong><ul>`;
+        info["レビュー"].forEach(review => {
+          html += `<li>${review}</li>`;
+        });
+        html += `</ul></div>`;
+      }
+      
+      // 顯示あらすじ（逐行呈現）
+      if(info["あらすじ"]) {
+        html += `<div class="section"><strong>あらすじ:</strong>`;
+        info["あらすじ"].forEach(line => {
+          html += `<p>${line}</p>`;
+        });
+        html += `</div>`;
+      }
+      
+      document.getElementById("movieInfo").innerHTML = html;
+    }
+
+    // 載入 JSON 資料
+    fetch('https://raw.githubusercontent.com/ku-nlp/JMRD/main/data/train.json')
+      .then(response => response.json())
+      .then(data => {
+        // 整理成不重複的電影資料 (以 movie_title 為依據)
+        const movieMap = {};
+        data.forEach(dialogue => {
+          const title = dialogue.movie_title;
+          if (!movieMap[title]) {
+            movieMap[title] = dialogue.knowledge;
+          }
+        });
+        movies = Object.keys(movieMap).map(title => ({
+          title: title,
+          info: movieMap[title]
+        }));
+        document.getElementById("movieInfo").innerText = `電影資料載入完成，共有 ${movies.length} 部電影。`;
+        populateGenreOptions();
+        filterMovies(); // 初始過濾
+      })
+      .catch(error => {
+        console.error('載入 JSON 發生錯誤：', error);
+        document.getElementById("movieInfo").innerText = "載入電影資料失敗。";
+      });
+
+    // 當下拉選單或搜尋框內容改變時進行過濾
+    document.getElementById("genreSelect").addEventListener("change", filterMovies);
+    document.getElementById("searchInput").addEventListener("input", filterMovies);
+
+    // 點擊推薦按鈕後，從過濾後的電影中隨機推薦一部並顯示詳細資訊
+    document.getElementById("recommendBtn").addEventListener("click", function() {
+      filterMovies();
+      if (filteredMovies.length === 0) {
+        document.getElementById("movieInfo").innerText = "沒有符合條件的電影。";
+        return;
+      }
+      const randomMovie = filteredMovies[Math.floor(Math.random() * filteredMovies.length)];
+      displayMovie(randomMovie);
+    });
+  </script>
+</body>
+</html>
